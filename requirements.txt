@@ -1,0 +1,13 @@
+# Standard Library modules (No install needed)
+# - tkinter, socket, threading, json, pickle, select, sys, time, random, argparse
+
+# External Dependencies
+customtkinter
+openai
+hume
+textblob
+python-dotenv
+emoji
+Pillow
+bcrypt
+requests
