@@ -122,11 +122,17 @@ class ClientSM:
 #==============================================================================
         elif self.state == S_CHATTING:
             if len(my_msg) > 0:     # my stuff going out
-                mysend(self.s, json.dumps({"action":"exchange", "from":"[" + self.me + "]", "message":my_msg}))
-                if my_msg == 'bye':
+                if my_msg == 'q':
                     self.disconnect()
-                    self.state = S_LOGGEDIN
+                    self.out_msg += 'See you next time!\n'
+                    self.state = S_OFFLINE
                     self.peer = ''
+                else:
+                    mysend(self.s, json.dumps({"action":"exchange", "from":"[" + self.me + "]", "message":my_msg}))
+                    if my_msg == 'bye':
+                        self.disconnect()
+                        self.state = S_LOGGEDIN
+                        self.peer = ''
             if len(peer_msg) > 0:    # peer's stuff, coming in
                 peer_msg = json.loads(peer_msg)
                 if peer_msg["action"] == "connect":

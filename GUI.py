@@ -34,8 +34,10 @@ ctk.set_default_color_theme("dark-blue")  # Themes: "blue" (standard), "green", 
 class GUI:
     # constructor method
     def __init__(self, send, recv, sm, s):
+        print("DEBUG: GUI.__init__ called")
         # chat window which is currently hidden
         self.Window = ctk.CTk()
+        print("DEBUG: CTk window created")
         self.Window.withdraw()
         self.send = send
         self.recv = recv
@@ -43,9 +45,13 @@ class GUI:
         self.socket = s
         self.my_msg = ""
         self.system_msg = ""
+        self.should_terminate = False
+        self.after_id = None
         
         # AI Handler
+        print("DEBUG: Creating AI handler...")
         self.ai = ai_utils.AIHandler()
+        print("DEBUG: AI handler created")
         
         # Advanced Features
         self.input_history = []
@@ -60,11 +66,16 @@ class GUI:
 
     def login(self):
         # login/signup window
-        self.login_window = ctk.CTkToplevel()
+        self.login_window = ctk.CTkToplevel(self.Window)
         # set the title
         self.login_window.title("Welcome")
         self.login_window.geometry("400x450")
         self.login_window.resizable(width=False, height=False)
+        
+        # Make window appear on top and centered
+        self.login_window.attributes('-topmost', True)
+        self.login_window.lift()
+        self.login_window.focus()
 
         # Center things a bit
         self.login_frame = ctk.CTkFrame(self.login_window)
@@ -181,7 +192,10 @@ class GUI:
                     process.start()
                     
                     # Start polling logic (Wait a bit for connection to settle)
-                    self.Window.after(2000, self.update_user_list)
+                    try:
+                        self.after_id = self.Window.after(2000, self.update_user_list)
+                    except Exception as e:
+                        print(f"Failed to schedule initial update_user_list: {e}")
                 else:
                     self.status_label.configure(text=response.get("message", "Login failed"), text_color="red")
         else:
@@ -293,7 +307,10 @@ class GUI:
         except Exception as e:
             print(f"Error polling user list: {e}")
             # Continue anyway, will retry on next poll
-        self.Window.after(10000, self.update_user_list)
+        try:
+            self.after_id = self.Window.after(10000, self.update_user_list)
+        except Exception as e:
+            print(f"Failed to schedule update_user_list: {e}")
         
     def navigate_history_up(self, event):
         if self.input_history:
@@ -743,10 +760,12 @@ class GUI:
         self._display_system_message(f"--- AI Image ---\n[Image Generated]: {url}\n(Click or copy usage depends on standard terminal unsupported in GUI for now)\n----------------", "ai")
 
     def proc(self):
-        while True:
+        while not self.should_terminate:
             try:
                 read, write, error = select.select([self.socket], [], [], 0)
             except Exception as e:
+                if self.should_terminate:
+                    break
                 print(f"Select error: {e}")
                 time.sleep(0.1)
                 continue
@@ -818,6 +837,29 @@ class GUI:
                 # Normal Processing
                 new_text = self.sm.proc(self.my_msg, peer_msg)
                 
+                # If the state moved to offline, close the GUI and stop background processing
+                if self.sm.get_state() == S_OFFLINE:
+                    self.should_terminate = True
+                    if self.after_id:
+                        try:
+                            self.Window.after_cancel(self.after_id)
+                        except Exception:
+                            pass
+                    if new_text.strip():
+                        try:
+                            self.textCons.configure(state=NORMAL)
+                            self.textCons.insert(END, new_text.rstrip() + "\n", "system")
+                            self.textCons.configure(state=DISABLED)
+                            self.textCons.see(END)
+                        except Exception:
+                            pass
+                        self.system_msg = ""
+                    try:
+                        self.Window.after(0, self.Window.destroy)
+                    except Exception:
+                        pass
+                    return
+                
                 # Regex Parse Server Message: (dd.mm.yy,HH:MM) user : message
                 # Pattern: (07.12.25,19:12) user : hello
                 
@@ -879,5 +921,16 @@ class GUI:
         self.login()
 # create a GUI class object
 if __name__ == "__main__": 
-    # Just for testing the GUI without the full client wrapper if needed
-    pass 
+    print("DEBUG: Starting GUI main entry point")
+    import argparse
+    parser = argparse.ArgumentParser(description='Chat Client')
+    parser.add_argument('-d', type=str, default=None, help='server IP addr')
+    args = parser.parse_args()
+    
+    print(f"DEBUG: Args = {args}")
+    from chat_client_class import Client
+    print("DEBUG: Client imported")
+    client = Client(args)
+    print("DEBUG: Client created")
+    client.run_chat()
+    print("DEBUG: run_chat completed") 
